@@ -1,140 +1,229 @@
-if (process.platform !== "win32") require("child_process").exec("npm install");
-
-const colors = require('ansi-colors');
-console.log(`${colors.yellow(`Starting bot, this can take a while..`)}`);
-
-const fs = require('fs');
-const packageFile = require('./package.json');
-let logMsg = `\n\n[${new Date().toLocaleString()}] [STARTING] Attempting to start the bot..\nNodeJS Version: ${process.version}\nBot Version: ${packageFile.version}`;
-fs.appendFile("./logs.txt", logMsg, (e) => { 
-  if(e) console.log(e);
-});
-
-const version = Number(process.version.split('.')[0].replace('v', ''));
-if (version < 16) {
-  console.log('\x1b[31m%s\x1b[0m', `[ERROR] Plex Bot requires a NodeJS version of 16.9 or higher!`)
-
-  let logMsg = `\n\n[${new Date().toLocaleString()}] [ERROR] Plex Bot requires a NodeJS version of 16.9 or higher!`;
-  fs.appendFile("./logs.txt", logMsg, (e) => { 
-    if(e) console.log(e);
-  });
-  process.exit()
+/* eslint-disable no-undef */
+if (process.platform !== "win32") require("child_process").exec("npm install n && n lts");
+if (+process.version.slice(1).split('.')[0] < 16) {
+  console.log("\u001b[31mCorebot requires Node JS version 16 or higher. Please go to https://nodejs.org/en/ then download and install the LTS version.\033[0m");
+  process.exit();
 }
 
-const { Collection, Client, GatewayIntentBits, Partials } = require('discord.js');
-const Discord = require('discord.js');
-const backup = require("discord-backup")
+const installModules = async () => {
+  return new Promise(async (resolve) => {
+    if (process.argv.slice(2).map(a => a.toLowerCase()).includes("--no-install")) resolve();
+    else {
+      const showInfo = process.argv.slice(2).map(a => a.toLowerCase()).includes("--show-install-output");
 
-const client = new Client({ 
-  restRequestTimeout: 60000,
-  partials: [Partials.Reaction],
-  intents: [
-    GatewayIntentBits.Guilds, 
-    GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.GuildMembers, 
-    GatewayIntentBits.GuildPresences, 
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildBans,
-  ]
-});
+      const { spawn } = require('child_process');
 
+      const npmCmd = process.platform == "win32" ? 'npm.cmd' : 'npm';
 
-module.exports = client
-require("./utils.js");
+      const modules = Object.keys(require('./package.json').dependencies);
 
-const yaml = require("js-yaml")
-const config = yaml.load(fs.readFileSync('./config.yml', 'utf8'))
-const lang = yaml.load(fs.readFileSync('././lang.yml', 'utf8'))
+      const info = "[90m>[39m          [38;2;87;255;107m[1m[INFO][22m[39m";
 
-if(!fs.existsSync('./data')) fs.mkdirSync('./data');
+      const missingModules = modules.filter(module => {
+        try {
+          require.resolve(module);
+          return;
+        } catch (err) {
+          return module !== "n" && !err.toString().includes("Error [ERR_PACKAGE_PATH_NOT_EXPORTED]");
+        }
+      });
 
-// Error Handler
-client.on('warn', async (error) => {
-  console.log(error)
-  console.log('\x1b[31m%s\x1b[0m', `[v${packageFile.version}] If you need any support, please create a ticket in our discord server and provide the logs.txt file\n\n`)
+      if (missingModules.length == 0) {
+        console.log(info, 'No modules are missing... Bot is starting up');
+        resolve();
+      } else {
+        console.log(info, missingModules.length, `module${missingModules.length == 1 ? ' is' : 's are'} not installed... Installing...`);
 
-  let errorMsg = `\n\n[${new Date().toLocaleString()}] [WARN] [v${packageFile.version}]\n${error.stack}`;
-  fs.appendFile("./logs.txt", errorMsg, (e) => { 
-    if(e) console.log(e);
-  });
-})
+        if (missingModules.length == 21) {
+          await new Promise(resolve => {
+            const install = spawn(npmCmd, ['i']);
 
-client.on('error', async (error) => {
-  console.log(error)
-  console.log('\x1b[31m%s\x1b[0m', `[v${packageFile.version}] If you need any support, please create a ticket in our discord server and provide the logs.txt file\n\n`)
+            install.stdout.on('data', (data) => {
+              if (showInfo) console.log(data.toString().trim());
+            });
 
-  let errorMsg = `\n\n[${new Date().toLocaleString()}] [ERROR] [v${packageFile.version}]\n${error.stack}`;
-  fs.appendFile("./logs.txt", errorMsg, (e) => { 
-    if(e) console.log(e);
-  });
-})
+            install.stderr.on('data', (data) => {
+              if (showInfo) console.log("\u001b[31m" + data.toString().trim());
+            });
 
-process.on('unhandledRejection', async (error) => {
-  console.log(error)
-  console.log('\x1b[31m%s\x1b[0m', `[v${packageFile.version}] If you need any support, please create a ticket in our discord server and provide the logs.txt file\n\n`)
+            install.on('exit', () => {
+              resolve();
+            });
+          });
+        } else {
+          for (let i = 0; i < missingModules.length; i++) {
+            const module = missingModules[i];
+  
+            console.log(info, `Installing module ${i + 1}/${missingModules.length} (${module})`);
+  
+            await new Promise(resolve => {
+              const install = spawn(npmCmd, ['i', module]);
+  
+              install.stdout.on('data', (data) => {
+                if (showInfo) console.log(data.toString().trim());
+              });
+  
+              install.stderr.on('data', (data) => {
+                if (showInfo) console.log("\u001b[31m" + data.toString().trim());
+              });
+  
+              install.on('exit', () => {
+                console.log(info, `Finished installing module ${i + 1}/${missingModules.length} (${((i + 1) / missingModules.length * 100).toFixed(2)}% done)`);
+                resolve();
+              });
+            });
+          }
+        }
 
-  let errorMsg = `\n\n[${new Date().toLocaleString()}] [unhandledRejection] [v${packageFile.version}]\n${error.stack}`;
-  fs.appendFile("./logs.txt", errorMsg, (e) => { 
-    if(e) console.log(e);
-  });
-})
-
-process.on('uncaughtException', async (error) => {
-  console.log(error)
-  console.log('\x1b[31m%s\x1b[0m', `[v${packageFile.version}] If you need any support, please create a ticket in our discord server and provide the logs.txt file\n\n`)
-
-  let errorMsg = `\n\n[${new Date().toLocaleString()}] [uncaughtException] [v${packageFile.version}]\n${error.stack}`;
-  fs.appendFile("./logs.txt", errorMsg, (e) => { 
-    if(e) console.log(e);
-  });
-})
-
-
-// Star board
-if(config.StarBoard.Enabled) {
-client.on('messageReactionAdd', async (reaction, user) => {
-  await reaction.fetch()
-  if (user.bot || !reaction.message.guild) return
-  let channel = reaction.message.guild.channels.cache.get(config.StarBoard.ChannelID)
-    
-  if (channel && config.StarBoard.Enabled && reaction.emoji.name === config.StarBoard.Emoji) {
-      const stars = client.guildData.get(reaction.message.guild.id, `stars.${reaction.message.id}`)
-
-      if (stars) {
-          await channel.messages.fetch(stars.board).catch(() => {}).then(msg => {
-          if (!msg) return client.guildData.delete(reaction.message.guild, `stars.${reaction.message.id}`)
-          const count = reaction.count
-
-          const fetchedMsg = msg.first();
-          const embed = fetchedMsg.embeds[0]
-          // %%__USER__%%
-          embed.footer.text = `${count} ${config.StarBoard.Emoji}`
-          fetchedMsg.edit({ embeds: [embed] })
-          })
-      } else if (reaction.count >= config.StarBoard.Reactions) {
-        console.log(reaction.message)
-          const embed = new Discord.EmbedBuilder()
-              .setColor("Yellow")
-              .addFields([
-                { name: 'Details', value: `> \`\`User:\`\` ${reaction.message.author}\n> \`\`Channel:\`\`\ ${reaction.message.channel}\n> \`\`Message:\`\`\ [Click here](${reaction.message.url})` },
-                ])
-              .setThumbnail(reaction.message.author.displayAvatarURL({ dynamic: true }))
-              .setFooter({ text: `${reaction.count} ${config.StarBoard.Emoji}` })
-              .setTimestamp()
-
-          if (reaction.message.content) embed.addFields([
-            { name: 'Content', value: `${reaction.message.content}` },
-            ])
-          if (['png', 'jpg', 'jpeg', 'gif', 'webp'].some(e => (reaction.message.attachments.first() || { url: '' }).url.endsWith(e))) embed.setImage(reaction.message.attachments.first().url)
-          let msg = await channel.send({ embeds: [embed] })
-          client.guildData.set(reaction.message.guild.id, { board: msg.id }, `stars.${reaction.message.id}`)
+        console.log(info, 'All missing modules have been installed! Please restart the bot');
+        process.exit();
       }
+    }
+  });
+};
+installModules().then(async () => {
+  require('console-stamp')(console, { label: false, pattern: 'HH:MM:ss', colors: { stamp: 'gray' } });
+
+  const fs = require('fs');
+  if (!fs.existsSync("./data/")) fs.mkdirSync("./data/");
+
+  const Utils = require("./src/modules/utils");
+  const variables = Utils.variables;
+
+  let config;
+  let lang;
+  let commands;
+  let embeds;
+  let TLDs;
+  let buttons;
+
+  try {
+    config = await Utils.yml('./configs/config.yml');
+    lang = await Utils.yml('./configs/lang.yml');
+    commands = await Utils.yml('./configs/commands.yml');
+    embeds = await Utils.yml('./configs/embeds.yml');
+    TLDs = await Utils.yml('./configs/TLDs.yml');
+    buttons = await Utils.yml('./configs/buttons.yml');
+  } catch (e) {
+    if (['YAMLSemanticError', 'YAMLSyntaxError'].includes(e.name)) console.log(Utils.errorPrefix + "An error has occured while loading the config or lang file. Bot shutting down..." + Utils.color.Reset);
+    else console.log(e);
+
+    return process.exit();
   }
-})
-}
+
+  variables.set('config', config);
+  variables.set('lang', lang);
+  variables.set('commands', commands);
+  variables.set('embeds', embeds);
+  variables.set('TLDs', TLDs);
+  variables.set('buttons', buttons);
+  variables.set('tempChannels', new Map());
+  
+  const Discord = require("discord.js");
+  const intents = Discord.Intents.FLAGS;
+  const bot = new Discord.Client({ autoReconnect: true, partials: ["CHANNEL"], intents: [intents.GUILDS,
+    intents.GUILD_MEMBERS,
+    intents.GUILD_BANS,
+    intents.GUILD_EMOJIS_AND_STICKERS,
+    intents.GUILD_INTEGRATIONS,
+    intents.GUILD_WEBHOOKS,
+    intents.GUILD_INVITES,
+    intents.GUILD_VOICE_STATES,
+    intents.GUILD_PRESENCES,
+    intents.GUILD_MESSAGES,
+    intents.GUILD_MESSAGE_REACTIONS,
+    intents.GUILD_MESSAGE_TYPING,
+    intents.DIRECT_MESSAGES,
+    intents.DIRECT_MESSAGE_REACTIONS,
+    intents.DIRECT_MESSAGE_TYPING
+  ] });
+
+  // DATABASE
+  const Database = await require('./src/modules/database.js').setup(config, bot);
+
+  // Set variables
+  variables.set('errors', []);
+  variables.set('addon_errors', []);
+  variables.set('db', Database);
+  variables.set('channelLogBlacklist', new Set());
+  variables.set('bot', bot);
+  variables.set('noAnnounceFilter', new Set());
+  variables.set('noAnnounceAntiAd', new Set());
+
+  // COMMAND HANDLER
+  require('./src/modules/handlers/CommandHandler').init();
+
+  // EVENT HANDLER
+  require('./src/modules/handlers/EventHandler').init(bot);
+
+  const error = require('./src/modules/error');
+  process.on('uncaughtException', () => {
+    return;
+  });
+
+  const { inspect } = require("util");
+  process.on('unhandledRejection', async (reason, promise) => {
+    const promiseText = inspect(promise) || "";
+
+    try {
+      error(reason.toString(), promiseText, promiseText ? promiseText.split("\n")[2].split(" ")[8].split(/\/|\\/).pop().replace(/\)|\(/g, '') : "Unknown", undefined, reason);
+    } catch (err) {
+      error(reason.toString(), "Unknown", promiseText);
+    }
+  });
+
+  Utils.yml('./configs/config.yml')
+    .then(config => {
+      bot.login(config.Token).catch(error => {
+        if (error.message.includes("An invalid token was provided")) {
+          console.log(Utils.errorPrefix + "Your bot token is incorrect! Shutting down...");
+        } else {
+          console.log(Utils.errorPrefix + "An error occured while attempting to login to the bot:");
+          console.log(error);
+        }
+        process.exit();
+      });
+      variables.set('bot', bot);
+    });
 
 
-backup.setStorageFolder(__dirname+"/data/Backups");
+  const readline = require('readline');
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  rl.on('line', (input) => {
+    if (input == 'stop') {
+      console.log('Bot shutting down...');
+      process.exit();
+    }
+  });
+
+  if (Utils.getStartupParameters().includes("clear-errors")) {
+    if (fs.existsSync("./data/errors.txt")) {
+      fs.unlink("./data/errors.txt", (err) => {
+        if (err) console.log(err);
+        else {
+          console.log(Utils.infoPrefix + 'Cleared errors.txt');
+        }
+      });
+    }
+  }
+
+  if (Utils.getStartupParameters().includes("clear-backups")) {
+    if (fs.existsSync("./data/backups")) {
+      const backups = fs.readdirSync("./data/backups");
+
+      backups.forEach(backup => {
+        fs.rmdirSync(`./data/backups/${backup}`, {
+          recursive: true
+        });
+      });
+
+      console.log(Utils.infoPrefix + 'Cleared backups');
+    }
+  }
+});
+// BlackKarma | DirectLeaks
